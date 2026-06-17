@@ -1,0 +1,35 @@
+# nap-of-the-rpi Configuration
+# Copy this file to config.yaml and fill in your values.
+
+pir:
+  pin: 17                      # BCM GPIO pin for HC-SR501 PIR sensor
+  cooldown_seconds: 10         # Minimum seconds between detection triggers
+
+laser:
+  pin: 18                      # BCM GPIO pin for KY-008 laser (PWM capable)
+  pattern: "blink"             # Options: solid, blink, pulse
+  duration_seconds: 3.0        # How long the laser stays active per trigger
+  blink_frequency_hz: 5.0      # Blink toggles per second (blink mode only)
+  pulse_rate_hz: 1.0           # Fade in/out cycles per second (pulse mode only)
+
+weather:
+  api_key: "${WEATHER_API_KEY}" # OpenWeatherMap API key (from environment variable)
+  location: "New York,US"       # City and country code
+  units: "imperial"             # Options: imperial (F), metric (C)
+
+voice:
+  wake_word: "hey pi"           # Wake word to activate voice commands
+  model_path: "./models/vosk-model-small-en-us"  # Path to Vosk speech model
+
+audio:
+  tts_speed: 150                # Speech rate (words per minute)
+  tts_voice: "en_US-lessac-medium"  # Piper voice model name
+  tts_model_path: "./models/piper-voice-en-us"  # Path to Piper voice model
+  bluetooth_device: "JBL Flip 6"    # Bluetooth speaker name
+  fallback_to_jack: true        # Fall back to 3.5mm jack if BT unavailable
+
+system:
+  log_level: "INFO"             # Options: DEBUG, INFO, WARNING, ERROR
+  log_file: "/var/log/nap-of-the-rpi.log"
+  log_max_bytes: 5242880        # 5MB max log file size
+  log_backup_count: 3           # Number of rotated log files to keep
