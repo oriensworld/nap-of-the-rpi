@@ -29,9 +29,9 @@ Supported commands (after wake word):
 import json
 import logging
 import queue
+import sounddevice as sd
 import threading
 
-import sounddevice as sd
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +250,9 @@ class VoiceCommand:
     # ------------------------------------------------------------------------------------------------
     @staticmethod
     def _match_weather(command: str) -> bool:
-        """Check if command matches weather request patterns."""
+        """
+        Check if command matches weather request patterns.
+        """
         weather_phrases = [
             "weather",
             "what's the weather",
@@ -265,11 +267,15 @@ class VoiceCommand:
     # ------------------------------------------------------------------------------------------------
     @staticmethod
     def _match_laser_on(command: str) -> bool:
-        """Check if command matches laser-on patterns."""
+        """
+        Check if command matches laser-on patterns.
+        """
         return "laser on" in command or "turn on laser" in command
 
     # ------------------------------------------------------------------------------------------------
     @staticmethod
     def _match_laser_off(command: str) -> bool:
-        """Check if command matches laser-off patterns."""
+        """
+        Check if command matches laser-off patterns.
+        """
         return "laser off" in command or "turn off laser" in command

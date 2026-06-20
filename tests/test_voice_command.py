@@ -18,16 +18,21 @@ RUN WITH:
 """
 
 # ----------------------------------------------------------------------------------------------------
-import time
-from unittest.mock import MagicMock, patch
-
 from core.event_bus import EventBus
 from modules.voice_command import VoiceCommand
+from unittest.mock import MagicMock, patch
+
+
+# ----------------------------------------------------------------------------------------------------
+import time
 
 
 # ----------------------------------------------------------------------------------------------------
 def make_config(wake_word="hey pi", model_path="./models/vosk-model-small-en-us"):
-    """Create a mock Config for testing."""
+    """
+    Create a mock Config for testing.
+    """
+
     config = MagicMock()
     config.voice.wake_word = wake_word
     config.voice.model_path = model_path
@@ -36,8 +41,11 @@ def make_config(wake_word="hey pi", model_path="./models/vosk-model-small-en-us"
 
 # ----------------------------------------------------------------------------------------------------
 class TestVoiceCommandParsing:
-    """Test wake word detection and command parsing logic."""
+    """
+    Test wake word detection and command parsing logic.
+    """
 
+    # ------------------------------------------------------------------------------------------------
     def setup_method(self):
         self.bus = EventBus()
         self.config = make_config()
@@ -46,7 +54,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_weather_command(self):
-        """'hey pi weather' should emit command_weather."""
+        """'
+        hey pi weather' should emit command_weather.
+        """
+        
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
 
@@ -57,7 +68,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_whats_the_weather_command(self):
-        """'hey pi what's the weather' should emit command_weather."""
+        """
+        'hey pi what's the weather' should emit command_weather.
+        """
+
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
 
@@ -68,7 +82,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_laser_on_command(self):
-        """'hey pi laser on' should emit command_laser_on."""
+        """
+        'hey pi laser on' should emit command_laser_on.
+        """
+
         results = []
         self.bus.subscribe("command_laser_on", lambda data=None: results.append("laser_on"))
 
@@ -79,7 +96,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_laser_off_command(self):
-        """'hey pi laser off' should emit command_laser_off."""
+        """
+        'hey pi laser off' should emit command_laser_off.
+        """
+
         results = []
         self.bus.subscribe("command_laser_off", lambda data=None: results.append("laser_off"))
 
@@ -90,7 +110,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_turn_on_laser_alternative(self):
-        """'hey pi turn on laser' should also work."""
+        """
+        'hey pi turn on laser' should also work.
+        """
+
         results = []
         self.bus.subscribe("command_laser_on", lambda data=None: results.append("laser_on"))
 
@@ -101,7 +124,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_no_wake_word_ignored(self):
-        """Text without wake word should be completely ignored."""
+        """
+        Text without wake word should be completely ignored.
+        """
+
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
         self.bus.subscribe("weather_ready", lambda data: results.append("unrecognized"))
@@ -113,7 +139,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_unrecognized_command_emits_feedback(self):
-        """Unknown command after wake word should emit 'Command not recognized.'"""
+        """
+        Unknown command after wake word should emit 'Command not recognized.'
+        """
+
         results = []
         self.bus.subscribe("weather_ready", lambda data: results.append(data))
 
@@ -125,7 +154,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_case_insensitive(self):
-        """Wake word and commands should be case-insensitive."""
+        """
+        Wake word and commands should be case-insensitive.
+        """
+
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
 
@@ -136,7 +168,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_wake_word_in_middle_of_text(self):
-        """Wake word doesn't have to be at the start of recognized text."""
+        """
+        Wake word doesn't have to be at the start of recognized text.
+        """
+
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
 
@@ -147,7 +182,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_custom_wake_word(self):
-        """Custom wake word from config should work."""
+        """
+        Custom wake word from config should work.
+        """
+
         self.config.voice.wake_word = "computer"
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
@@ -159,7 +197,10 @@ class TestVoiceCommandParsing:
 
     # ------------------------------------------------------------------------------------------------
     def test_weather_report_phrase(self):
-        """'hey pi weather report' should emit command_weather."""
+        """
+        'hey pi weather report' should emit command_weather.
+        """
+
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
 
@@ -171,8 +212,11 @@ class TestVoiceCommandParsing:
 
 # ----------------------------------------------------------------------------------------------------
 class TestVoiceCommandLifecycle:
-    """Test start/stop and initialization."""
+    """
+    Test start/stop and initialization.
+    """
 
+    # ------------------------------------------------------------------------------------------------
     def setup_method(self):
         self.bus = EventBus()
         self.config = make_config()
@@ -182,7 +226,10 @@ class TestVoiceCommandLifecycle:
     @patch("modules.voice_command.KaldiRecognizer", create=True)
     @patch("modules.voice_command.Model", create=True)
     def test_start_with_mocked_vosk(self, mock_model, mock_recognizer, mock_stream):
-        """start() should initialize Vosk and audio stream."""
+        """
+        start() should initialize Vosk and audio stream.
+        """
+
         with patch("vosk.Model", mock_model), patch("vosk.KaldiRecognizer", mock_recognizer):
             voice = VoiceCommand(self.bus, self.config)
             voice.start()
@@ -193,7 +240,10 @@ class TestVoiceCommandLifecycle:
 
     # ------------------------------------------------------------------------------------------------
     def test_start_without_vosk_model_emits_error(self):
-        """If Vosk model can't load, should emit error event and not crash."""
+        """
+        If Vosk model can't load, should emit error event and not crash.
+        """
+
         errors = []
         self.bus.subscribe("error", lambda data: errors.append(data))
 
@@ -207,7 +257,10 @@ class TestVoiceCommandLifecycle:
 
     # ------------------------------------------------------------------------------------------------
     def test_stop_without_start_no_error(self):
-        """Calling stop() without start() should not crash."""
+        """
+        Calling stop() without start() should not crash.
+        """
+
         voice = VoiceCommand(self.bus, self.config)
         voice.stop()  # Should not raise
 
@@ -216,7 +269,10 @@ class TestVoiceCommandLifecycle:
     @patch("modules.voice_command.KaldiRecognizer", create=True)
     @patch("modules.voice_command.Model", create=True)
     def test_stop_closes_stream(self, mock_model, mock_recognizer, mock_stream):
-        """stop() should close the audio stream and join the thread."""
+        """
+        stop() should close the audio stream and join the thread.
+        """
+
         mock_stream_instance = MagicMock()
         mock_stream.return_value = mock_stream_instance
 
@@ -233,11 +289,16 @@ class TestVoiceCommandLifecycle:
 
 # ----------------------------------------------------------------------------------------------------
 class TestVoiceCommandMatchers:
-    """Test the static command matching methods."""
+    """
+    Test the static command matching methods.
+    """
 
     # ------------------------------------------------------------------------------------------------
     def test_match_weather_variants(self):
-        """All weather phrases should match."""
+        """
+        All weather phrases should match.
+        """
+
         assert VoiceCommand._match_weather("weather") is True
         assert VoiceCommand._match_weather("what's the weather") is True
         assert VoiceCommand._match_weather("whats the weather") is True
@@ -247,25 +308,37 @@ class TestVoiceCommandMatchers:
 
     # ------------------------------------------------------------------------------------------------
     def test_match_weather_negative(self):
-        """Non-weather phrases should not match."""
+        """
+        Non-weather phrases should not match.
+        """
+
         assert VoiceCommand._match_weather("turn on the lights") is False
         assert VoiceCommand._match_weather("laser on") is False
         assert VoiceCommand._match_weather("") is False
 
     # ------------------------------------------------------------------------------------------------
     def test_match_laser_on_variants(self):
-        """Laser-on phrases should match."""
+        """
+        Laser-on phrases should match.
+        """
+
         assert VoiceCommand._match_laser_on("laser on") is True
         assert VoiceCommand._match_laser_on("turn on laser") is True
 
     # ------------------------------------------------------------------------------------------------
     def test_match_laser_off_variants(self):
-        """Laser-off phrases should match."""
+        """
+        Laser-off phrases should match.
+        """
+
         assert VoiceCommand._match_laser_off("laser off") is True
         assert VoiceCommand._match_laser_off("turn off laser") is True
 
     # ------------------------------------------------------------------------------------------------
     def test_match_laser_negative(self):
-        """Non-laser phrases should not match."""
+        """
+        Non-laser phrases should not match.
+        """
+        
         assert VoiceCommand._match_laser_on("laser off") is False
         assert VoiceCommand._match_laser_off("laser on") is False

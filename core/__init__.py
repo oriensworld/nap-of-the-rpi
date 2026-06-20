@@ -2,4 +2,6 @@
 # __init__.py
 # ----------------------------------------------------------------------------------------------------
 
-"""Core package: event bus and configuration."""
+"""
+Core package: event bus and configuration.
+"""
