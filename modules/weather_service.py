@@ -19,12 +19,13 @@ OpenWeatherMap API:
 """
 
 # ----------------------------------------------------------------------------------------------------
-import logging
-import time
 from dataclasses import dataclass
 from datetime import datetime
 
+# ----------------------------------------------------------------------------------------------------
+import logging
 import requests
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,6 @@ logger = logging.getLogger(__name__)
 # API configuration
 OPENWEATHERMAP_URL = "https://api.openweathermap.org/data/2.5/weather"
 REQUEST_TIMEOUT = 5  # seconds
-
 
 # ----------------------------------------------------------------------------------------------------
 @dataclass
@@ -96,7 +96,9 @@ class WeatherService:
 
     # ------------------------------------------------------------------------------------------------
     def start(self) -> None:
-        """Subscribe to detection and command events."""
+        """
+        Subscribe to detection and command events.
+        """
         if self._running:
             logger.warning("Weather service already running")
             return
@@ -108,7 +110,9 @@ class WeatherService:
 
     # ------------------------------------------------------------------------------------------------
     def stop(self) -> None:
-        """Unsubscribe from events."""
+        """
+        Unsubscribe from events.
+        """
         self._running = False
         self.event_bus.unsubscribe("human_detected", self._on_human_detected)
         self.event_bus.unsubscribe("command_weather", self._on_command_weather)

@@ -22,15 +22,15 @@ Audio output chain:
 """
 
 # ----------------------------------------------------------------------------------------------------
+from utils.bluetooth import BluetoothHelper
+
+# ----------------------------------------------------------------------------------------------------
 import io
 import logging
-import threading
-import wave
-
 import numpy as np
 import sounddevice as sd
-
-from utils.bluetooth import BluetoothHelper
+import threading
+import wave
 
 logger = logging.getLogger(__name__)
 

@@ -13,18 +13,21 @@ RUN WITH:
 """
 
 # ----------------------------------------------------------------------------------------------------
-import time
-from unittest.mock import MagicMock, patch
-
-import numpy as np
-
 from core.event_bus import EventBus
 from modules.tts_speaker import TTSSpeaker
+from unittest.mock import MagicMock, patch
+
+
+# ----------------------------------------------------------------------------------------------------
+import time
+import numpy as np
 
 
 # ----------------------------------------------------------------------------------------------------
 def make_config():
-    """Create a mock Config for testing."""
+    """
+    Create a mock Config for testing.
+    """
     config = MagicMock()
     config.audio.tts_model_path = "./models/test-voice"
     config.audio.tts_speed = 150
@@ -35,7 +38,9 @@ def make_config():
 
 # ----------------------------------------------------------------------------------------------------
 class TestTTSSpeakerBasic:
-    """Basic start/stop and lifecycle tests."""
+    """
+    Basic start/stop and lifecycle tests.
+    """
 
     def setup_method(self):
         self.bus = EventBus()
@@ -45,7 +50,9 @@ class TestTTSSpeakerBasic:
     @patch("modules.tts_speaker.BluetoothHelper")
     @patch("modules.tts_speaker.PiperVoice", create=True)
     def test_start_sets_running(self, mock_piper_class, mock_bt):
-        """After start(), the speaker should be running."""
+        """
+        After start(), the speaker should be running.
+        """
         # Mock the PiperVoice.load import inside start()
         with patch("piper.PiperVoice") as mock_pv:
             mock_pv.load.return_value = MagicMock()
@@ -57,7 +64,9 @@ class TestTTSSpeakerBasic:
 
     # ------------------------------------------------------------------------------------------------
     def test_start_without_piper_model_continues(self):
-        """If Piper model can't load, start() should still succeed (graceful degradation)."""
+        """
+        If Piper model can't load, start() should still succeed (graceful degradation).
+        """
         speaker = TTSSpeaker(self.bus, self.config)
         speaker._bluetooth = MagicMock()
         # Don't mock piper — it will fail to import/load, but start() shouldn't crash
@@ -68,7 +77,9 @@ class TestTTSSpeakerBasic:
 
     # ------------------------------------------------------------------------------------------------
     def test_stop_clears_running(self):
-        """After stop(), the speaker should not be running."""
+        """
+        After stop(), the speaker should not be running.
+        """
         speaker = TTSSpeaker(self.bus, self.config)
         speaker._bluetooth = MagicMock()
         speaker.start()
@@ -79,27 +90,36 @@ class TestTTSSpeakerBasic:
 
 # ----------------------------------------------------------------------------------------------------
 class TestTTSSpeakerSynthesize:
-    """Test speech synthesis logic."""
+    """
+    Test speech synthesis logic.
+    """
 
+    # ------------------------------------------------------------------------------------------------
     def setup_method(self):
         self.bus = EventBus()
         self.config = make_config()
         self.speaker = TTSSpeaker(self.bus, self.config)
         self.speaker._bluetooth = MagicMock()
-
+    
+    # ------------------------------------------------------------------------------------------------
     def teardown_method(self):
         self.speaker.stop()
 
     # ------------------------------------------------------------------------------------------------
     def test_synthesize_returns_none_without_piper(self):
-        """If Piper is not loaded, _synthesize should return None."""
+        """
+        If Piper is not loaded, _synthesize should return None.
+        """
+
         self.speaker._piper = None
         result = self.speaker._synthesize("hello")
         assert result is None
 
     # ------------------------------------------------------------------------------------------------
     def test_synthesize_returns_audio_array(self):
-        """With a mocked Piper, _synthesize should return a numpy array."""
+        """
+        With a mocked Piper, _synthesize should return a numpy array.
+        """
 
         # Create a mock Piper that writes valid WAV data
         mock_piper = MagicMock()
@@ -123,8 +143,11 @@ class TestTTSSpeakerSynthesize:
 
 # ----------------------------------------------------------------------------------------------------
 class TestTTSSpeakerPlayback:
-    """Test audio playback logic."""
+    """
+    Test audio playback logic.
+    """
 
+    # ------------------------------------------------------------------------------------------------
     def setup_method(self):
         self.bus = EventBus()
         self.config = make_config()
@@ -132,13 +155,17 @@ class TestTTSSpeakerPlayback:
         self.speaker._bluetooth = MagicMock()
         self.speaker._bluetooth.is_connected.return_value = True
 
+    # ------------------------------------------------------------------------------------------------
     def teardown_method(self):
         self.speaker.stop()
 
     # ------------------------------------------------------------------------------------------------
     @patch("modules.tts_speaker.sd")
     def test_play_audio_calls_sounddevice(self, mock_sd):
-        """_play_audio should call sd.play() with the audio data."""
+        """
+        _play_audio should call sd.play() with the audio data.
+        """
+
         audio = np.zeros(1000, dtype=np.int16)
         self.speaker._running = True
         self.speaker._play_audio(audio)
@@ -152,7 +179,10 @@ class TestTTSSpeakerPlayback:
     # ------------------------------------------------------------------------------------------------
     @patch("modules.tts_speaker.sd")
     def test_play_audio_bt_disconnected_fallback(self, mock_sd):
-        """If BT is disconnected but fallback enabled, should still play."""
+        """
+        If BT is disconnected but fallback enabled, should still play.
+        """
+
         self.speaker._bluetooth.is_connected.return_value = False
         self.speaker._running = True
 
@@ -165,7 +195,10 @@ class TestTTSSpeakerPlayback:
     # ------------------------------------------------------------------------------------------------
     @patch("modules.tts_speaker.sd")
     def test_play_audio_bt_disconnected_no_fallback(self, mock_sd):
-        """If BT is disconnected and fallback disabled, should NOT play."""
+        """
+        If BT is disconnected and fallback disabled, should NOT play.
+        """
+
         self.speaker._bluetooth.is_connected.return_value = False
         self.config.audio.fallback_to_jack = False
         self.speaker._running = True
@@ -179,8 +212,11 @@ class TestTTSSpeakerPlayback:
 
 # ----------------------------------------------------------------------------------------------------
 class TestTTSSpeakerEvents:
-    """Test event handling."""
+    """
+    Test event handling.
+    """
 
+    # ------------------------------------------------------------------------------------------------
     def setup_method(self):
         self.bus = EventBus()
         self.config = make_config()
@@ -188,13 +224,17 @@ class TestTTSSpeakerEvents:
         self.speaker._bluetooth = MagicMock()
         self.speaker._bluetooth.is_connected.return_value = True
 
+    # ------------------------------------------------------------------------------------------------
     def teardown_method(self):
         self.speaker.stop()
 
     # ------------------------------------------------------------------------------------------------
     @patch("modules.tts_speaker.sd")
     def test_weather_ready_triggers_speak(self, mock_sd):
-        """'weather_ready' event should trigger speech synthesis and playback."""
+        """
+        'weather_ready' event should trigger speech synthesis and playback
+        """
+
         # Set up a mock Piper that produces audio
         mock_piper = MagicMock()
 
@@ -219,7 +259,10 @@ class TestTTSSpeakerEvents:
     # ------------------------------------------------------------------------------------------------
     @patch("modules.tts_speaker.sd")
     def test_events_ignored_after_stop(self, mock_sd):
-        """After stop(), weather_ready events should not trigger speech."""
+        """
+        After stop(), weather_ready events should not trigger speech.
+        """
+
         mock_piper = MagicMock()
         self.speaker._piper = mock_piper
         self.speaker.start()
@@ -233,7 +276,10 @@ class TestTTSSpeakerEvents:
     # ------------------------------------------------------------------------------------------------
     @patch("modules.tts_speaker.sd")
     def test_empty_text_not_spoken(self, mock_sd):
-        """Empty text in weather_ready should not trigger synthesis."""
+        """
+        Empty text in weather_ready should not trigger synthesis.
+        """
+
         mock_piper = MagicMock()
         self.speaker._piper = mock_piper
         self.speaker._running = True
@@ -246,12 +292,17 @@ class TestTTSSpeakerEvents:
 
 # ----------------------------------------------------------------------------------------------------
 class TestBluetoothHelper:
-    """Test BluetoothHelper (mocked subprocess calls)."""
+    """
+    Test BluetoothHelper (mocked subprocess calls).
+    """
 
     # ------------------------------------------------------------------------------------------------
     @patch("utils.bluetooth.platform.system", return_value="Windows")
     def test_is_connected_windows_returns_true(self, mock_platform):
-        """On Windows (dev), is_connected() should return True."""
+        """
+        On Windows (dev), is_connected() should return True.
+        """
+
         from utils.bluetooth import BluetoothHelper
         bt = BluetoothHelper("Test Speaker")
         bt._is_linux = False
@@ -260,7 +311,10 @@ class TestBluetoothHelper:
     # ------------------------------------------------------------------------------------------------
     @patch("utils.bluetooth.platform.system", return_value="Windows")
     def test_connect_windows_returns_true(self, mock_platform):
-        """On Windows (dev), connect() should return True."""
+        """
+        On Windows (dev), connect() should return True.
+        """
+
         from utils.bluetooth import BluetoothHelper
         bt = BluetoothHelper("Test Speaker")
         bt._is_linux = False
@@ -269,7 +323,10 @@ class TestBluetoothHelper:
     # ------------------------------------------------------------------------------------------------
     @patch("utils.bluetooth.subprocess.run")
     def test_is_connected_linux_checks_bluetoothctl(self, mock_run):
-        """On Linux, should shell out to bluetoothctl to check status."""
+        """
+        On Linux, should shell out to bluetoothctl to check status.
+        """
+
         from utils.bluetooth import BluetoothHelper
         bt = BluetoothHelper("JBL Flip 6")
         bt._is_linux = True
@@ -282,7 +339,10 @@ class TestBluetoothHelper:
     # ------------------------------------------------------------------------------------------------
     @patch("utils.bluetooth.subprocess.run")
     def test_is_connected_linux_not_connected(self, mock_run):
-        """If bluetoothctl shows not connected, should return False."""
+        """
+        If bluetoothctl shows not connected, should return False.
+        """
+
         from utils.bluetooth import BluetoothHelper
         bt = BluetoothHelper("JBL Flip 6")
         bt._is_linux = True
@@ -295,7 +355,10 @@ class TestBluetoothHelper:
     # ------------------------------------------------------------------------------------------------
     @patch("utils.bluetooth.subprocess.run")
     def test_ensure_connected_retries(self, mock_run):
-        """ensure_connected should retry on failure."""
+        """
+        ensure_connected should retry on failure.
+        """
+        
         from utils.bluetooth import BluetoothHelper
         bt = BluetoothHelper("JBL Flip 6")
         bt._is_linux = True
