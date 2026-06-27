@@ -121,15 +121,18 @@ class TestTTSSpeakerSynthesize:
         With a mocked Piper, _synthesize should return a numpy array.
         """
 
-        # Create a mock Piper that writes valid WAV data
+        # Create a mock Piper that writes valid WAV data via synthesize_wav
         mock_piper = MagicMock()
 
-        def fake_synthesize(text, wav_file):
-            # Write some silence (zeros) as valid WAV frames
+        def fake_synthesize_wav(text, wav_file):
+            # synthesize_wav is responsible for setting WAV params and writing frames
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
             samples = np.zeros(1000, dtype=np.int16)
             wav_file.writeframes(samples.tobytes())
 
-        mock_piper.synthesize.side_effect = fake_synthesize
+        mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
         self.speaker._piper = mock_piper
         self.speaker._running = True
 
@@ -238,11 +241,14 @@ class TestTTSSpeakerEvents:
         # Set up a mock Piper that produces audio
         mock_piper = MagicMock()
 
-        def fake_synthesize(text, wav_file):
+        def fake_synthesize_wav(text, wav_file):
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
             samples = np.zeros(500, dtype=np.int16)
             wav_file.writeframes(samples.tobytes())
 
-        mock_piper.synthesize.side_effect = fake_synthesize
+        mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
         self.speaker._piper = mock_piper
         self.speaker._running = True
         self.bus.subscribe("weather_ready", self.speaker._on_weather_ready)
@@ -252,7 +258,7 @@ class TestTTSSpeakerEvents:
         time.sleep(0.5)
 
         # Piper should have been called
-        mock_piper.synthesize.assert_called_once()
+        mock_piper.synthesize_wav.assert_called_once()
         # Audio should have been played
         mock_sd.play.assert_called_once()
 
@@ -271,7 +277,7 @@ class TestTTSSpeakerEvents:
         self.bus.emit("weather_ready", {"text": "should be ignored"})
         time.sleep(0.2)
 
-        mock_piper.synthesize.assert_not_called()
+        mock_piper.synthesize_wav.assert_not_called()
 
     # ------------------------------------------------------------------------------------------------
     @patch("modules.tts_speaker.sd")
@@ -287,7 +293,7 @@ class TestTTSSpeakerEvents:
         self.speaker._on_weather_ready({"text": ""})
         time.sleep(0.2)
 
-        mock_piper.synthesize.assert_not_called()
+        mock_piper.synthesize_wav.assert_not_called()
 
 
 # ----------------------------------------------------------------------------------------------------

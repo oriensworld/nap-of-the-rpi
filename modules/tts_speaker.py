@@ -22,15 +22,16 @@ Audio output chain:
 """
 
 # ----------------------------------------------------------------------------------------------------
-from utils.bluetooth import BluetoothHelper
-
 # ----------------------------------------------------------------------------------------------------
 import io
 import logging
-import numpy as np
-import sounddevice as sd
 import threading
 import wave
+
+import numpy as np
+import sounddevice as sd
+
+from utils.bluetooth import BluetoothHelper
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,10 @@ class TTSSpeaker:
         """
         Synthesize text to audio using Piper TTS.
 
+        Piper's synthesize_wav() writes a complete WAV file (including headers)
+        to a wave.Wave_write object. We write to a temp file, then read back
+        the audio samples as a numpy array for playback via sounddevice.
+
         Returns:
             Numpy array of audio samples (int16, mono), or None on failure.
         """
@@ -163,19 +168,20 @@ class TTSSpeaker:
             return None
 
         try:
-            # Piper synthesizes to a WAV byte stream
+            # Piper expects a wave.Wave_write object — it sets channels/rate/width itself
             wav_buffer = io.BytesIO()
             with wave.open(wav_buffer, "wb") as wav_file:
-                wav_file.setnchannels(1)  # Mono
-                wav_file.setsampwidth(2)  # 16-bit
-                wav_file.setframerate(22050)  # Piper's default sample rate
-                self._piper.synthesize(text, wav_file)
+                self._piper.synthesize_wav(text, wav_file)
 
             # Read back the WAV data as numpy array
             wav_buffer.seek(0)
-            with wave.open(wav_buffer, "rb") as wav_file:
-                frames = wav_file.readframes(wav_file.getnframes())
+            with wave.open(wav_buffer, "rb") as rf:
+                frames = rf.readframes(rf.getnframes())
                 audio_data = np.frombuffer(frames, dtype=np.int16)
+
+            if len(audio_data) == 0:
+                logger.warning("Piper produced empty audio")
+                return None
 
             return audio_data
 

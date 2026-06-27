@@ -286,11 +286,14 @@ class TestFullChain:
         # Mock Piper synthesis
         mock_piper = MagicMock()
 
-        def fake_synthesize(text, wav_file):
+        def fake_synthesize_wav(text, wav_file):
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
             samples = np.zeros(500, dtype=np.int16)
             wav_file.writeframes(samples.tobytes())
 
-        mock_piper.synthesize.side_effect = fake_synthesize
+        mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
         self.tts._piper = mock_piper
         self.tts._running = True
         self.bus.subscribe("weather_ready", self.tts._on_weather_ready)
@@ -305,7 +308,7 @@ class TestFullChain:
         # Laser should have activated
         # (may already be off if duration expired, but the pattern ran)
         assert mock_get.called  # Weather was fetched
-        assert mock_piper.synthesize.called  # TTS spoke
+        assert mock_piper.synthesize_wav.called  # TTS spoke
         assert mock_sd.play.called  # Audio was played
 
 
