@@ -22,19 +22,16 @@ Audio output chain:
 """
 
 # ----------------------------------------------------------------------------------------------------
+from utils.bluetooth import BluetoothHelper
 # ----------------------------------------------------------------------------------------------------
 import io
 import logging
+import numpy as np
+import sounddevice as sd
 import threading
 import wave
 
-import numpy as np
-import sounddevice as sd
-
-from utils.bluetooth import BluetoothHelper
-
 logger = logging.getLogger(__name__)
-
 
 # ----------------------------------------------------------------------------------------------------
 class TTSSpeaker:
