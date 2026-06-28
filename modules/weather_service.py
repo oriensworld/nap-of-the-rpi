@@ -233,12 +233,12 @@ class WeatherService:
 
         Returns:
             A natural-sounding string for TTS to speak.
-            Example: "Currently it's 72 degrees and clear sky. Humidity is 45 percent."
+            Example: "In Dallas, it's 72 degrees and clear sky. Humidity is 45 percent."
         """
         # Round temperature to nearest integer for cleaner speech
         temp = round(data.temperature)
         return (
-            f"Currently it's {temp} degrees and {data.condition}. "
+            f"In {data.location}, it's {temp} degrees and {data.condition}. "
             f"Humidity is {data.humidity} percent."
         )
 

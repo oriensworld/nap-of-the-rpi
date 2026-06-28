@@ -188,7 +188,7 @@ class TestWeatherFormat:
 
     # ------------------------------------------------------------------------------------------------
     def test_format_announcement_basic(self):
-        """Should produce a natural-sounding weather announcement."""
+        """Should produce a natural-sounding weather announcement with location."""
         from datetime import datetime
         data = WeatherData(
             temperature=72.5,
@@ -201,6 +201,7 @@ class TestWeatherFormat:
 
         result = self.service.format_announcement(data)
 
+        assert "New York" in result
         assert "72" in result  # Rounded from 72.5
         assert "clear sky" in result
         assert "45" in result
@@ -254,6 +255,7 @@ class TestWeatherEvents:
         time.sleep(0.3)
 
         assert len(results) == 1
+        assert "New York" in results[0]["text"]
         assert "72" in results[0]["text"]
         assert "clear sky" in results[0]["text"]
 
