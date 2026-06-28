@@ -35,11 +35,13 @@ SAMPLE_API_RESPONSE = {
 
 
 # ----------------------------------------------------------------------------------------------------
-def make_config(cooldown=10, api_key="test-key-123", location="New York,US", units="imperial"):
+def make_config(cooldown=10, api_key="test-key-123", location="New York,US",
+                units="imperial", location_mode="manual"):
     """Create a mock Config for testing."""
     config = MagicMock()
     config.weather.api_key = api_key
     config.weather.location = location
+    config.weather.location_mode = location_mode
     config.weather.units = units
     config.pir.cooldown_seconds = cooldown
     return config
@@ -353,3 +355,131 @@ class TestWeatherEvents:
         time.sleep(0.2)
 
         assert len(results) == 0
+
+
+# ----------------------------------------------------------------------------------------------------
+# Sample geolocation API response matching ip-api.com's format
+SAMPLE_GEO_RESPONSE = {
+    "status": "success",
+    "lat": 40.7128,
+    "lon": -74.006,
+    "city": "New York",
+}
+
+
+# ----------------------------------------------------------------------------------------------------
+class TestGeolocation:
+    """Test IP geolocation lookup and caching."""
+
+    def setup_method(self):
+        self.bus = EventBus()
+        self.config = make_config(location_mode="auto")
+        self.service = WeatherService(self.bus, self.config)
+
+    def teardown_method(self):
+        self.service.stop()
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.weather_service.requests.get")
+    def test_geolocation_success_caches_coords(self, mock_get):
+        """Successful geolocation should cache lat/lon on the service."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = SAMPLE_GEO_RESPONSE
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        self.service.start()
+
+        assert self.service._coords == (40.7128, -74.006)
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.weather_service.requests.get")
+    def test_geolocation_failure_falls_back(self, mock_get):
+        """If geolocation fails, _coords stays None and q= param is used."""
+        import requests as req
+        mock_get.side_effect = req.Timeout("timeout")
+
+        self.service.start()
+
+        assert self.service._coords is None
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.weather_service.requests.get")
+    def test_geolocation_called_only_once(self, mock_get):
+        """Geolocation should be called once at start, not on every fetch."""
+        geo_response = MagicMock()
+        geo_response.json.return_value = SAMPLE_GEO_RESPONSE
+        geo_response.raise_for_status.return_value = None
+
+        weather_response = MagicMock()
+        weather_response.json.return_value = SAMPLE_API_RESPONSE
+        weather_response.raise_for_status.return_value = None
+
+        mock_get.side_effect = [geo_response, weather_response, weather_response]
+
+        self.service.start()
+        self.service.fetch_weather()
+        self.service.fetch_weather()
+
+        # First call is geolocation, next two are weather
+        assert mock_get.call_count == 3
+        first_call_url = mock_get.call_args_list[0][0][0]
+        assert "ip-api" in first_call_url
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.weather_service.requests.get")
+    def test_fetch_uses_latlon_when_coords_available(self, mock_get):
+        """With cached coords, fetch_weather should use lat/lon params."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = SAMPLE_API_RESPONSE
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        self.service._coords = (40.7128, -74.006)
+        self.service.fetch_weather()
+
+        call_kwargs = mock_get.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params")
+        assert "lat" in params
+        assert "lon" in params
+        assert "q" not in params
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.weather_service.requests.get")
+    def test_fetch_uses_city_when_no_coords(self, mock_get):
+        """Without coords (manual mode or failed geo), use q= param."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = SAMPLE_API_RESPONSE
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        self.service.fetch_weather()
+
+        call_kwargs = mock_get.call_args
+        params = call_kwargs.kwargs.get("params") or call_kwargs[1].get("params")
+        assert "q" in params
+        assert "lat" not in params
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.weather_service.requests.get")
+    def test_manual_mode_skips_geolocation(self, mock_get):
+        """In manual mode, start() should not call geolocation API."""
+        self.config.weather.location_mode = "manual"
+
+        self.service.start()
+
+        mock_get.assert_not_called()
+        assert self.service._coords is None
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.weather_service.requests.get")
+    def test_geolocation_non_success_status(self, mock_get):
+        """If API returns status != 'success', treat as failure."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": "fail", "message": "reserved range"}
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+
+        self.service.start()
+
+        assert self.service._coords is None
