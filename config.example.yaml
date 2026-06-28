@@ -14,7 +14,8 @@ laser:
 
 weather:
   api_key: "${WEATHER_API_KEY}" # OpenWeatherMap API key (from environment variable)
-  location: "New York,US"       # City and country code
+  location: "New York,US"       # Fallback city (used when location_mode is "manual" or geolocation fails)
+  location_mode: "auto"         # "auto" = IP geolocation at startup, "manual" = use location above
   units: "imperial"             # Options: imperial (F), metric (C)
 
 voice:

@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------------------------------------
 # API configuration
 OPENWEATHERMAP_URL = "https://api.openweathermap.org/data/2.5/weather"
+GEOLOCATION_URL = "http://ip-api.com/json/?fields=lat,lon,city,status"
 REQUEST_TIMEOUT = 5  # seconds
 
 # ----------------------------------------------------------------------------------------------------
@@ -93,15 +94,22 @@ class WeatherService:
         self.config = config
         self._last_fetch_time = 0.0  # Timestamp of last successful fetch
         self._running = False
+        self._coords: tuple[float, float] | None = None
 
     # ------------------------------------------------------------------------------------------------
     def start(self) -> None:
         """
         Subscribe to detection and command events.
+        Resolves location via IP geolocation if location_mode is "auto".
         """
         if self._running:
             logger.warning("Weather service already running")
             return
+
+        if self.config.weather.location_mode == "auto":
+            self._coords = self._resolve_location()
+            if self._coords is None:
+                logger.warning("Geolocation failed, falling back to config location")
 
         self.event_bus.subscribe("human_detected", self._on_human_detected)
         self.event_bus.subscribe("command_weather", self._on_command_weather)
@@ -119,6 +127,40 @@ class WeatherService:
         logger.info("Weather service stopped")
 
     # ------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------
+    def _resolve_location(self) -> tuple[float, float] | None:
+        """
+        Resolve lat/lon via IP geolocation (ip-api.com). Called once at startup.
+        Returns (lat, lon) on success, None on failure.
+        """
+        for attempt in range(2):
+            try:
+                response = requests.get(GEOLOCATION_URL, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                data = response.json()
+
+                if data.get("status") != "success":
+                    logger.warning("Geolocation API returned non-success status")
+                    return None
+
+                lat = data["lat"]
+                lon = data["lon"]
+                logger.info(f"Geolocation resolved: {data.get('city', '?')} ({lat}, {lon})")
+                return (lat, lon)
+
+            except requests.Timeout:
+                logger.warning(f"Geolocation timeout (attempt {attempt + 1}/2)")
+            except requests.HTTPError as e:
+                logger.error(f"Geolocation HTTP error: {e}")
+                return None
+            except requests.RequestException as e:
+                logger.warning(f"Geolocation request failed (attempt {attempt + 1}/2): {e}")
+            except (KeyError, TypeError) as e:
+                logger.error(f"Unexpected geolocation response format: {e}")
+                return None
+
+        return None
+
     def fetch_weather(self) -> WeatherData | None:
         """
         Fetch current weather from OpenWeatherMap API.
@@ -138,10 +180,15 @@ class WeatherService:
             return None
 
         params = {
-            "q": location,
             "appid": api_key,
             "units": units,
         }
+
+        if self._coords:
+            params["lat"] = self._coords[0]
+            params["lon"] = self._coords[1]
+        else:
+            params["q"] = location
 
         # Try up to 2 times (initial + 1 retry)
         for attempt in range(2):

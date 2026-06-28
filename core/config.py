@@ -47,6 +47,7 @@ DEFAULTS = {
     "weather": {
         "api_key": "",
         "location": "New York,US",
+        "location_mode": "auto",
         "units": "imperial",
     },
     "voice": {
