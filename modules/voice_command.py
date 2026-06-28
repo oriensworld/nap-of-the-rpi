@@ -29,9 +29,9 @@ Supported commands (after wake word):
 import json
 import logging
 import queue
-import sounddevice as sd
 import threading
 
+import sounddevice as sd
 
 logger = logging.getLogger(__name__)
 
@@ -226,11 +226,20 @@ class VoiceCommand:
         text_lower = text.lower()
 
         # Check if wake word is in the recognized text
-        if wake_word not in text_lower:
+        # Vosk may transcribe "hey pi" as "hey pie", "hey pee", etc.
+        # Try common Vosk transcriptions of the wake word
+        wake_variants = [wake_word, wake_word + "e", wake_word + "p"]
+        matched_variant = None
+        for variant in wake_variants:
+            if variant in text_lower:
+                matched_variant = variant
+                break
+
+        if matched_variant is None:
             return  # Not a command — ignore
 
-        # Extract command portion (everything after the wake word)
-        wake_idx = text_lower.index(wake_word) + len(wake_word)
+        # Extract command portion (everything after the wake word variant)
+        wake_idx = text_lower.index(matched_variant) + len(matched_variant)
         command = text_lower[wake_idx:].strip()
 
         logger.info(f"Wake word detected, command: '{command}'")
@@ -261,21 +270,20 @@ class VoiceCommand:
             "hows the weather",
             "weather report",
             "tell me the weather",
+            "either",  # Vosk sometimes mishears "weather" as "either"
         ]
         return any(phrase in command for phrase in weather_phrases)
 
     # ------------------------------------------------------------------------------------------------
     @staticmethod
     def _match_laser_on(command: str) -> bool:
-        """
-        Check if command matches laser-on patterns.
-        """
-        return "laser on" in command or "turn on laser" in command
+        """Check if command matches laser-on patterns."""
+        phrases = ["laser on", "turn on laser", "ladder on", "turn on ladder"]
+        return any(phrase in command for phrase in phrases)
 
     # ------------------------------------------------------------------------------------------------
     @staticmethod
     def _match_laser_off(command: str) -> bool:
-        """
-        Check if command matches laser-off patterns.
-        """
-        return "laser off" in command or "turn off laser" in command
+        """Check if command matches laser-off patterns."""
+        phrases = ["laser off", "turn off laser", "ladder off", "turn off ladder"]
+        return any(phrase in command for phrase in phrases)
