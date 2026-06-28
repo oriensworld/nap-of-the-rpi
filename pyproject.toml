@@ -8,6 +8,7 @@ license = "MIT"
 
 dependencies = [
     "gpiozero>=2.0",
+    "lgpio>=0.2.2.0; sys_platform == 'linux'",
     "piper-tts>=1.2.0",
     "requests>=2.31.0",
     "vosk>=0.3.45",
