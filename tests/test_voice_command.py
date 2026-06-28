@@ -18,13 +18,12 @@ RUN WITH:
 """
 
 # ----------------------------------------------------------------------------------------------------
-from core.event_bus import EventBus
-from modules.voice_command import VoiceCommand
-from unittest.mock import MagicMock, patch
-
-
 # ----------------------------------------------------------------------------------------------------
 import time
+from unittest.mock import MagicMock, patch
+
+from core.event_bus import EventBus
+from modules.voice_command import VoiceCommand
 
 
 # ----------------------------------------------------------------------------------------------------
@@ -57,7 +56,7 @@ class TestVoiceCommandParsing:
         """'
         hey pi weather' should emit command_weather.
         """
-        
+
         results = []
         self.bus.subscribe("command_weather", lambda data=None: results.append("weather"))
 
@@ -288,57 +287,62 @@ class TestVoiceCommandLifecycle:
 
 
 # ----------------------------------------------------------------------------------------------------
-class TestVoiceCommandMatchers:
-    """
-    Test the static command matching methods.
-    """
+class TestVoiceCommandFuzzyMatching:
+    """Test the fuzzy command matching system."""
+
+    def setup_method(self):
+        self.bus = EventBus()
+        self.config = make_config()
+        self.voice = VoiceCommand(self.bus, self.config)
+        self.voice._running = True
 
     # ------------------------------------------------------------------------------------------------
-    def test_match_weather_variants(self):
-        """
-        All weather phrases should match.
-        """
-
-        assert VoiceCommand._match_weather("weather") is True
-        assert VoiceCommand._match_weather("what's the weather") is True
-        assert VoiceCommand._match_weather("whats the weather") is True
-        assert VoiceCommand._match_weather("how's the weather") is True
-        assert VoiceCommand._match_weather("weather report") is True
-        assert VoiceCommand._match_weather("tell me the weather") is True
+    def test_exact_weather_matches(self):
+        """Exact weather phrases should match."""
+        assert self.voice._fuzzy_match_command("weather") == "command_weather"
+        assert self.voice._fuzzy_match_command("what's the weather") == "command_weather"
+        assert self.voice._fuzzy_match_command("weather report") == "command_weather"
 
     # ------------------------------------------------------------------------------------------------
-    def test_match_weather_negative(self):
-        """
-        Non-weather phrases should not match.
-        """
-
-        assert VoiceCommand._match_weather("turn on the lights") is False
-        assert VoiceCommand._match_weather("laser on") is False
-        assert VoiceCommand._match_weather("") is False
+    def test_exact_laser_matches(self):
+        """Exact laser phrases should match."""
+        assert self.voice._fuzzy_match_command("laser on") == "command_laser_on"
+        assert self.voice._fuzzy_match_command("turn on laser") == "command_laser_on"
+        assert self.voice._fuzzy_match_command("laser off") == "command_laser_off"
+        assert self.voice._fuzzy_match_command("turn off laser") == "command_laser_off"
 
     # ------------------------------------------------------------------------------------------------
-    def test_match_laser_on_variants(self):
-        """
-        Laser-on phrases should match.
-        """
-
-        assert VoiceCommand._match_laser_on("laser on") is True
-        assert VoiceCommand._match_laser_on("turn on laser") is True
+    def test_fuzzy_weather_mishearings(self):
+        """Common Vosk mishearings of 'weather' should still match."""
+        # "either" is phonetically close to "weather"
+        result = self.voice._fuzzy_match_command("either")
+        assert result == "command_weather"
 
     # ------------------------------------------------------------------------------------------------
-    def test_match_laser_off_variants(self):
-        """
-        Laser-off phrases should match.
-        """
+    def test_fuzzy_laser_mishearings(self):
+        """Common Vosk mishearings of 'laser' should still match."""
+        # "ladder on" is close to "laser on"
+        result = self.voice._fuzzy_match_command("ladder on")
+        assert result == "command_laser_on"
 
-        assert VoiceCommand._match_laser_off("laser off") is True
-        assert VoiceCommand._match_laser_off("turn off laser") is True
+        # "laser own" is close to "laser on"
+        result = self.voice._fuzzy_match_command("laser own")
+        assert result == "command_laser_on"
+
+        # "later on" is close to "laser on"
+        result = self.voice._fuzzy_match_command("later on")
+        assert result == "command_laser_on"
 
     # ------------------------------------------------------------------------------------------------
-    def test_match_laser_negative(self):
-        """
-        Non-laser phrases should not match.
-        """
-        
-        assert VoiceCommand._match_laser_on("laser off") is False
-        assert VoiceCommand._match_laser_off("laser on") is False
+    def test_unrelated_phrases_dont_match(self):
+        """Completely unrelated phrases should return None."""
+        assert self.voice._fuzzy_match_command("hello world") is None
+        assert self.voice._fuzzy_match_command("play music") is None
+        assert self.voice._fuzzy_match_command("") is None
+
+    # ------------------------------------------------------------------------------------------------
+    def test_laser_on_vs_off_distinguished(self):
+        """Fuzzy matching should distinguish between laser on and laser off."""
+        assert self.voice._fuzzy_match_command("laser on") == "command_laser_on"
+        assert self.voice._fuzzy_match_command("laser off") == "command_laser_off"
+
