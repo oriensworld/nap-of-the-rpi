@@ -26,6 +26,7 @@ from utils.bluetooth import BluetoothHelper
 # ----------------------------------------------------------------------------------------------------
 import io
 import logging
+import queue
 import numpy as np
 import sounddevice as sd
 import threading
@@ -40,14 +41,10 @@ class TTSSpeaker:
 
     Subscribes to:
     - 'weather_ready': speaks the weather announcement text
+    - 'tts_say': speaks arbitrary text from any module
 
-    The speak() method runs in a separate thread to avoid blocking the event bus.
-    If Bluetooth is unavailable, falls back to 3.5mm jack (or default audio device).
-
-    Usage:
-        speaker = TTSSpeaker(event_bus, config)
-        speaker.start()
-        speaker.speak("Currently it's 72 degrees and clear sky.")
+    Speech requests are queued (FIFO) to prevent overlapping playback.
+    Emits 'tts_speaking' when playback starts and 'tts_done' when finished.
     """
 
     # ------------------------------------------------------------------------------------------------
@@ -62,9 +59,11 @@ class TTSSpeaker:
         self.event_bus = event_bus
         self.config = config
         self._running = False
-        self._piper = None  # Piper voice synthesis instance
+        self._piper = None
         self._bluetooth = BluetoothHelper(config.audio.bluetooth_device)
-        self._speak_lock = threading.Lock()  # Prevent overlapping speech
+        self._speak_lock = threading.Lock()
+        self._queue = queue.Queue()
+        self._worker_thread = None
 
     # ------------------------------------------------------------------------------------------------
     def start(self) -> None:
@@ -94,11 +93,15 @@ class TTSSpeaker:
 
         # Subscribe to events
         self.event_bus.subscribe("weather_ready", self._on_weather_ready)
+        self.event_bus.subscribe("tts_say", self._on_tts_say)
         self._running = True
+
+        # Start the speech worker thread (drains queue sequentially)
+        self._worker_thread = threading.Thread(target=self._speech_worker, daemon=True)
+        self._worker_thread.start()
 
         # Try to connect Bluetooth speaker (non-blocking, best-effort)
         if self.config.audio.fallback_to_jack:
-            # Don't block startup if BT isn't available
             threading.Thread(target=self._bluetooth.ensure_connected, daemon=True).start()
 
         logger.info("TTS speaker started")
@@ -108,16 +111,18 @@ class TTSSpeaker:
         """Clean up audio resources."""
         self._running = False
         self.event_bus.unsubscribe("weather_ready", self._on_weather_ready)
+        self.event_bus.unsubscribe("tts_say", self._on_tts_say)
+        # Signal worker thread to exit
+        self._queue.put(None)
         self._piper = None
         logger.info("TTS speaker stopped")
 
     # ------------------------------------------------------------------------------------------------
     def speak(self, text: str) -> None:
         """
-        Synthesize and play speech for the given text.
+        Queue text for speech synthesis and playback.
 
-        Runs synthesis + playback in a background thread to avoid blocking.
-        Uses a lock to prevent overlapping speech (queues sequentially).
+        Adds the text to a FIFO queue. The worker thread processes items sequentially.
 
         Args:
             text: The text to speak aloud.
@@ -125,37 +130,44 @@ class TTSSpeaker:
         if not self._running:
             return
 
-        # Run in background thread so event bus isn't blocked
-        threading.Thread(
-            target=self._speak_sync,
-            args=(text,),
-            daemon=True,
-        ).start()
+        self._queue.put(text)
+
+    # ------------------------------------------------------------------------------------------------
+    def _speech_worker(self) -> None:
+        """
+        Background worker: drains the speech queue and speaks items in order.
+
+        Runs until None is placed in the queue (signals shutdown).
+        """
+        while True:
+            text = self._queue.get()
+            if text is None:
+                break
+            self._speak_sync(text)
 
     # ------------------------------------------------------------------------------------------------
     def _speak_sync(self, text: str) -> None:
         """
         Internal: synthesize and play speech synchronously.
 
-        Called in a background thread. Uses a lock so that if multiple
-        speak() calls happen rapidly, they play sequentially (not overlapping).
+        Emits tts_speaking before playback and tts_done after (always, even on failure).
+        Uses a lock so that if called from multiple paths, they play sequentially.
         """
         with self._speak_lock:
             try:
                 audio_data = self._synthesize(text)
                 if audio_data is not None:
+                    self.event_bus.emit("tts_speaking", {"text": text})
                     self._play_audio(audio_data)
             except Exception as e:
                 logger.error(f"TTS speak failed: {e}")
+            finally:
+                self.event_bus.emit("tts_done", {"text": text})
 
     # ------------------------------------------------------------------------------------------------
     def _synthesize(self, text: str) -> np.ndarray | None:
         """
         Synthesize text to audio using Piper TTS.
-
-        Piper's synthesize_wav() writes a complete WAV file (including headers)
-        to a wave.Wave_write object. We write to a temp file, then read back
-        the audio samples as a numpy array for playback via sounddevice.
 
         Returns:
             Numpy array of audio samples (int16, mono), or None on failure.
@@ -165,12 +177,10 @@ class TTSSpeaker:
             return None
 
         try:
-            # Piper expects a wave.Wave_write object — it sets channels/rate/width itself
             wav_buffer = io.BytesIO()
             with wave.open(wav_buffer, "wb") as wav_file:
                 self._piper.synthesize_wav(text, wav_file)
 
-            # Read back the WAV data as numpy array
             wav_buffer.seek(0)
             with wave.open(wav_buffer, "rb") as rf:
                 frames = rf.readframes(rf.getnframes())
@@ -191,16 +201,11 @@ class TTSSpeaker:
         """
         Play audio data through the configured output device.
 
-        Uses sounddevice which routes through the OS audio system.
-        If Bluetooth is connected, audio goes to the BT speaker.
-        If not, falls back to default output (3.5mm jack or USB audio).
-
         Args:
             audio_data: Numpy array of int16 audio samples.
             sample_rate: Sample rate in Hz (default 22050 for Piper).
         """
         try:
-            # Ensure Bluetooth is connected (quick check, no long retry here)
             if not self._bluetooth.is_connected():
                 if self.config.audio.fallback_to_jack:
                     logger.info("BT speaker not connected, using default audio output")
@@ -208,7 +213,6 @@ class TTSSpeaker:
                     logger.warning("BT speaker not connected and fallback disabled")
                     return
 
-            # Play audio and wait for it to finish
             sd.play(audio_data, samplerate=sample_rate)
             sd.wait()
 
@@ -229,4 +233,20 @@ class TTSSpeaker:
         text = data.get("text", "")
         if text:
             logger.info(f"Speaking: {text[:50]}...")
+            self.speak(text)
+
+    # ------------------------------------------------------------------------------------------------
+    def _on_tts_say(self, data: dict) -> None:
+        """
+        Event handler: speak arbitrary text from any module.
+
+        Args:
+            data: Dict with 'text' key containing the text to speak.
+        """
+        if not self._running:
+            return
+
+        text = data.get("text", "")
+        if text:
+            logger.info(f"TTS say: {text[:50]}...")
             self.speak(text)

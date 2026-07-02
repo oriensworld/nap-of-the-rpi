@@ -251,6 +251,12 @@ class TestTTSSpeakerEvents:
         mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
         self.speaker._piper = mock_piper
         self.speaker._running = True
+        # Start worker thread so queue is drained
+        import threading
+        self.speaker._worker_thread = threading.Thread(
+            target=self.speaker._speech_worker, daemon=True
+        )
+        self.speaker._worker_thread.start()
         self.bus.subscribe("weather_ready", self.speaker._on_weather_ready)
 
         # Emit event
@@ -294,6 +300,194 @@ class TestTTSSpeakerEvents:
         time.sleep(0.2)
 
         mock_piper.synthesize_wav.assert_not_called()
+
+
+# ----------------------------------------------------------------------------------------------------
+class TestTTSSpeakerTtsSay:
+    """
+    Test tts_say event handling, queue ordering, and lifecycle events.
+    """
+
+    # ------------------------------------------------------------------------------------------------
+    def setup_method(self):
+        self.bus = EventBus()
+        self.config = make_config()
+        self.speaker = TTSSpeaker(self.bus, self.config)
+        self.speaker._bluetooth = MagicMock()
+        self.speaker._bluetooth.is_connected.return_value = True
+
+    # ------------------------------------------------------------------------------------------------
+    def teardown_method(self):
+        self.speaker.stop()
+
+    # ------------------------------------------------------------------------------------------------
+    def _start_with_mock_piper(self, mock_piper):
+        """Helper: start the speaker with a mock piper (bypasses real model loading)."""
+        self.speaker._piper = mock_piper
+        self.speaker._running = True
+        import threading
+        self.speaker._worker_thread = threading.Thread(
+            target=self.speaker._speech_worker, daemon=True
+        )
+        self.speaker._worker_thread.start()
+        self.bus.subscribe("weather_ready", self.speaker._on_weather_ready)
+        self.bus.subscribe("tts_say", self.speaker._on_tts_say)
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.tts_speaker.sd")
+    def test_tts_say_triggers_speak(self, mock_sd):
+        """
+        'tts_say' event should trigger speech synthesis and playback.
+        """
+        mock_piper = MagicMock()
+
+        def fake_synthesize_wav(text, wav_file):
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            samples = np.zeros(500, dtype=np.int16)
+            wav_file.writeframes(samples.tobytes())
+
+        mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
+        self._start_with_mock_piper(mock_piper)
+
+        # Emit tts_say event
+        self.bus.emit("tts_say", {"text": "Force detected: medium pressure"})
+        time.sleep(0.5)
+
+        # Piper should have been called
+        assert mock_piper.synthesize_wav.call_count >= 1
+        mock_sd.play.assert_called()
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.tts_speaker.sd")
+    def test_tts_say_empty_text_ignored(self, mock_sd):
+        """
+        tts_say with empty text should not trigger synthesis.
+        """
+        mock_piper = MagicMock()
+        self._start_with_mock_piper(mock_piper)
+
+        self.speaker._on_tts_say({"text": ""})
+        time.sleep(0.2)
+
+        mock_piper.synthesize_wav.assert_not_called()
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.tts_speaker.sd")
+    def test_queue_ordering_fifo(self, mock_sd):
+        """
+        Multiple speak() calls should be processed in FIFO order.
+        """
+        spoken_order = []
+        mock_piper = MagicMock()
+
+        def fake_synthesize_wav(text, wav_file):
+            spoken_order.append(text)
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            samples = np.zeros(100, dtype=np.int16)
+            wav_file.writeframes(samples.tobytes())
+
+        mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
+        self._start_with_mock_piper(mock_piper)
+
+        # Queue 3 messages rapidly
+        self.speaker.speak("first")
+        self.speaker.speak("second")
+        self.speaker.speak("third")
+        time.sleep(1.0)
+
+        assert spoken_order == ["first", "second", "third"]
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.tts_speaker.sd")
+    def test_tts_speaking_and_tts_done_events_emitted(self, mock_sd):
+        """
+        tts_speaking should be emitted before playback, tts_done after.
+        """
+        events_received = []
+
+        def on_speaking(data):
+            events_received.append(("tts_speaking", data))
+
+        def on_done(data):
+            events_received.append(("tts_done", data))
+
+        self.bus.subscribe("tts_speaking", on_speaking)
+        self.bus.subscribe("tts_done", on_done)
+
+        mock_piper = MagicMock()
+
+        def fake_synthesize_wav(text, wav_file):
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            samples = np.zeros(100, dtype=np.int16)
+            wav_file.writeframes(samples.tobytes())
+
+        mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
+        self._start_with_mock_piper(mock_piper)
+
+        self.speaker.speak("hello world")
+        time.sleep(0.5)
+
+        # Should have received both lifecycle events in order
+        assert len(events_received) >= 2
+        assert events_received[0][0] == "tts_speaking"
+        assert events_received[0][1]["text"] == "hello world"
+        assert events_received[1][0] == "tts_done"
+        assert events_received[1][1]["text"] == "hello world"
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.tts_speaker.sd")
+    def test_tts_done_emitted_on_failure(self, mock_sd):
+        """
+        tts_done should still be emitted even if synthesis fails, so listeners don't hang.
+        """
+        events_received = []
+
+        def on_done(data):
+            events_received.append(data)
+
+        self.bus.subscribe("tts_done", on_done)
+
+        # Piper that raises an exception
+        mock_piper = MagicMock()
+        mock_piper.synthesize_wav.side_effect = RuntimeError("synthesis crashed")
+        self._start_with_mock_piper(mock_piper)
+
+        self.speaker.speak("will fail")
+        time.sleep(0.5)
+
+        # tts_done should still fire (from the except branch)
+        assert len(events_received) == 1
+        assert events_received[0]["text"] == "will fail"
+
+    # ------------------------------------------------------------------------------------------------
+    @patch("modules.tts_speaker.sd")
+    def test_weather_ready_still_works(self, mock_sd):
+        """
+        Backward compatibility: weather_ready should still trigger speech.
+        """
+        mock_piper = MagicMock()
+
+        def fake_synthesize_wav(text, wav_file):
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(22050)
+            samples = np.zeros(100, dtype=np.int16)
+            wav_file.writeframes(samples.tobytes())
+
+        mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
+        self._start_with_mock_piper(mock_piper)
+
+        self.bus.emit("weather_ready", {"text": "72 degrees"})
+        time.sleep(0.5)
+
+        mock_piper.synthesize_wav.assert_called()
+        mock_sd.play.assert_called()
 
 
 # ----------------------------------------------------------------------------------------------------

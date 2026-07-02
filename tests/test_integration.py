@@ -296,6 +296,12 @@ class TestFullChain:
         mock_piper.synthesize_wav.side_effect = fake_synthesize_wav
         self.tts._piper = mock_piper
         self.tts._running = True
+        # Start worker thread so queued speech is processed
+        import threading as _threading
+        self.tts._worker_thread = _threading.Thread(
+            target=self.tts._speech_worker, daemon=True
+        )
+        self.tts._worker_thread.start()
         self.bus.subscribe("weather_ready", self.tts._on_weather_ready)
 
         self.laser.start()
